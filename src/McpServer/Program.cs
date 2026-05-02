@@ -21,7 +21,4 @@ builder.Services.AddMcpServer()
     .WithToolsFromAssembly();
 
 var host = builder.Build();
-
-TodoTools.ApiClient = host.Services.GetRequiredService<ApiClient>();
-
 host.Run();
