@@ -4,9 +4,12 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Shared.Models;
+using Xunit;
 
 namespace Api.Tests;
 
@@ -89,7 +92,8 @@ public class TodoApiTests : IDisposable
             });
         });
 
-        _server = app.GetTestServer();
+        app.StartAsync().GetAwaiter().GetResult();
+        _server = app.Services.GetRequiredService<IServer>() as TestServer ?? throw new InvalidOperationException("TestServer not available");
         _client = _server.CreateClient();
     }
 

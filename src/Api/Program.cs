@@ -2,10 +2,6 @@ using Shared.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddOpenApi();
-
 var app = builder.Build();
 
 // In-memory storage
@@ -14,8 +10,7 @@ var nextId = 1;
 
 // GET /api/todos → List<TodoItem>
 app.MapGet("/api/todos", () => todos)
-   .WithName("GetAllTodos")
-   .WithOpenApi();
+   .WithName("GetAllTodos");
 
 // GET /api/todos/{id} → TodoItem or 404
 app.MapGet("/api/todos/{id:int}", (int id) =>
@@ -23,8 +18,7 @@ app.MapGet("/api/todos/{id:int}", (int id) =>
     var todo = todos.FirstOrDefault(t => t.Id == id);
     return todo is not null ? Results.Ok(todo) : Results.NotFound();
 })
-.WithName("GetTodoById")
-.WithOpenApi();
+.WithName("GetTodoById");
 
 // POST /api/todos → CreateTodoRequest body → TodoItem (201)
 app.MapPost("/api/todos", (CreateTodoRequest request) =>
@@ -41,8 +35,7 @@ app.MapPost("/api/todos", (CreateTodoRequest request) =>
     todos.Add(todo);
     return Results.Created($"/api/todos/{todo.Id}", todo);
 })
-.WithName("CreateTodo")
-.WithOpenApi();
+.WithName("CreateTodo");
 
 // PUT /api/todos/{id} → UpdateTodoRequest body → TodoItem or 404
 app.MapPut("/api/todos/{id:int}", (int id, UpdateTodoRequest request) =>
@@ -60,8 +53,7 @@ app.MapPut("/api/todos/{id:int}", (int id, UpdateTodoRequest request) =>
 
     return Results.Ok(todo);
 })
-.WithName("UpdateTodo")
-.WithOpenApi();
+.WithName("UpdateTodo");
 
 // DELETE /api/todos/{id} → 204 or 404
 app.MapDelete("/api/todos/{id:int}", (int id) =>
@@ -71,8 +63,7 @@ app.MapDelete("/api/todos/{id:int}", (int id) =>
     todos.Remove(todo);
     return Results.NoContent();
 })
-.WithName("DeleteTodo")
-.WithOpenApi();
+.WithName("DeleteTodo");
 
 // GET /api/todos/stats → TodoStats
 app.MapGet("/api/todos/stats", () =>
@@ -85,7 +76,6 @@ app.MapGet("/api/todos/stats", () =>
         TotalCount = todos.Count
     });
 })
-.WithName("GetTodoStats")
-.WithOpenApi();
+.WithName("GetTodoStats");
 
 app.Run();
