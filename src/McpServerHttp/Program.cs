@@ -1,9 +1,32 @@
 using System.Text.Json;
+using System.Collections.Concurrent;
 using McpServer.Services;
 using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ========== Security Configuration ==========
+var apiKey = builder.Configuration["API_KEY"] ?? Environment.GetEnvironmentVariable("API_KEY");
+var allowedOrigins = builder.Configuration.GetSection("ALLOWED_ORIGINS").Get<string[]>() 
+    ?? new[] { "*" };
+
+// CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("McpCors", policy =>
+    {
+        if (allowedOrigins.Contains("*"))
+        {
+            policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+        }
+        else
+        {
+            policy.WithOrigins(allowedOrigins).AllowAnyMethod().AllowAnyHeader();
+        }
+    });
+});
+
+// API Client
 var apiBaseUrl = builder.Configuration["API_BASE_URL"] ?? Environment.GetEnvironmentVariable("API_BASE_URL") ?? "http://localhost:5000";
 
 builder.Services.AddHttpClient("ApiClient", client =>
@@ -15,7 +38,79 @@ builder.Services.AddSingleton<ApiClient>();
 
 var app = builder.Build();
 
-app.MapGet("/health", () => new { status = "ok", timestamp = DateTime.UtcNow });
+// ========== Security Middleware ==========
+
+// 1. API Key Authentication
+app.Use(async (context, next) =>
+{
+    // Skip API key check for health endpoint
+    if (context.Request.Path == "/health")
+    {
+        await next();
+        return;
+    }
+
+    var requestKey = context.Request.Headers["X-API-Key"].FirstOrDefault();
+    
+    if (string.IsNullOrEmpty(requestKey) || requestKey != apiKey)
+    {
+        context.Response.StatusCode = 401;
+        context.Response.ContentType = "application/json";
+        var error = JsonSerializer.Serialize(new { error = "Unauthorized: Invalid or missing X-API-Key header" });
+        await context.Response.WriteAsync(error);
+        return;
+    }
+
+    await next();
+});
+
+// 2. Rate Limiting (Simple in-memory)
+var rateLimits = new ConcurrentDictionary<string, (int Count, DateTime ResetTime)>();
+var maxRequestsPerMinute = 60;
+
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path == "/health")
+    {
+        await next();
+        return;
+    }
+
+    var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    var now = DateTime.UtcNow;
+    
+    var (count, resetTime) = rateLimits.GetOrAdd(clientIp, _ => (0, now.AddMinutes(1)));
+    
+    if (now > resetTime)
+    {
+        count = 0;
+        resetTime = now.AddMinutes(1);
+    }
+    
+    count++;
+    rateLimits[clientIp] = (count, resetTime);
+    
+    context.Response.Headers["X-RateLimit-Limit"] = maxRequestsPerMinute.ToString();
+    context.Response.Headers["X-RateLimit-Remaining"] = Math.Max(0, maxRequestsPerMinute - count).ToString();
+    context.Response.Headers["X-RateLimit-Reset"] = new DateTimeOffset(resetTime).ToUnixTimeSeconds().ToString();
+    
+    if (count > maxRequestsPerMinute)
+    {
+        context.Response.StatusCode = 429;
+        context.Response.ContentType = "application/json";
+        var error = JsonSerializer.Serialize(new { error = "Too many requests. Rate limit exceeded." });
+        await context.Response.WriteAsync(error);
+        return;
+    }
+
+    await next();
+});
+
+app.UseCors("McpCors");
+
+// ========== API Endpoints ==========
+
+app.MapGet("/health", () => new { status = "ok", timestamp = DateTime.UtcNow, version = "1.1.0-secure" });
 
 app.MapGet("/tools", () =>
 {
